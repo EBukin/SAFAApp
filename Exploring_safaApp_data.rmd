@@ -3,8 +3,6 @@ title: "Exploring SafaApp data"
 author: "Eduard Bukin"
 output:
   pdf_document: default
-  html_notebook: default
-  html_document: default
 ---
 
 Below, I attempt to explore data on the usage of the SAFA App along with the rates of app's installation and deletion by countries. 
@@ -13,7 +11,7 @@ Below, I attempt to explore data on the usage of the SAFA App along with the rat
 
 Previously, data on the app usage was downloaded in the bulk from the the Google app portal and was harvested with the R code.
 
-```{r echo=FALSE,error=FALSE,warning=FALSE,message=FALSE}
+```{r error=FALSE,warning=FALSE,message=FALSE}
 # Packages
 library(tidyverse)
 library(stringr)
@@ -30,7 +28,7 @@ load("data/allHarvestedAppData.Rdata")
 
 # Data exploration
 
-```{r echo=FALSE}
+```{r}
 vars <- 
   appData %>% 
   filter(fileName == "country") %>% 
@@ -49,18 +47,19 @@ countryData <-
 ```
 
 Looking at the total number of the apps installation and deletions over the year:  
-`Daily.Device.Installs` means how many time the app was installed on one device  
-`Daily.Device.Uninstalls` means how many times the app was deleted from one device  
+`Installs` means how many time the app was installed on one device  
+`Uninstalls` means how many times the app was deleted from one device  
 Both these numbers may include repetitive installation, when the app was re installed on the same device.
 
-```{r echo=FALSE}
+```{r}
 countryData %>% 
   group_by(Year, Var) %>% 
   summarise_at("Val", sum) %>% 
   ungroup() %>% 
   mutate(Year = fct_reorder(Year, as.integer(Year), .desc = TRUE)) %>% 
   ggplot(aes(x = Var, y = Val, fill = Year)) + 
-  geom_bar(stat = "identity") +
+  geom_col(aes(fill = Year)) +
+  geom_text(aes(label = Val), position = position_stack(vjust = 0.5)) +
   xlab("") +
   ylab("Number of installs / uninstalls")
   
@@ -70,7 +69,7 @@ countryData %>%
 
 Please note that for this plot we filtered only those countries, which had more than 10 installs of the SAFAApp. 
 
-```{r echo=FALSE}
+```{r}
 countryData %>% 
   group_by(Country, Year, Var) %>% 
   summarise_at("Val", sum) %>% 
@@ -82,19 +81,71 @@ countryData %>%
   mutate(Countries = fct_reorder(as.factor(str_c(Country, " ", Var)), SummOf, .desc = TRUE),
          Year = fct_reorder(Year, as.integer(Year),.desc = TRUE )) %>% 
   ggplot(aes(x = Countries, y = Val, fill = Year))  + 
-  geom_bar(stat = "identity", position = "stack") +
-  coord_flip()+ 
+  geom_col() +
+  geom_text(aes(label = Val), position = position_stack(vjust = 0.5)) +
+  # geom_bar(stat = "identity", position = "stack") +
+  coord_flip() + 
   theme(axis.text.y=element_text(hjust=0))+
   xlab("") +
   ylab("Number of installs / uninstalls")
   
 ```
 
+```{r echo=FALSE}
+installsNumber <-
+  countryData %>% 
+  filter(Var == "Installs", Val != 0) %>% 
+  select(Country) %>%  
+  distinct() %>%  
+  nrow()
+
+currentInstallsNumber <-
+  countryData %>% 
+  group_by(Country, Var) %>% 
+  summarise(Val = sum(Val)) %>% 
+  ungroup() %>% 
+  spread(Var, Val) %>% 
+  mutate(dif = Installs - Uninstalls) %>% 
+  filter(dif > 0 ) %>% 
+  select(Country) %>% 
+  distinct() %>% 
+  nrow()
+
+```
+
+
+Number of countries, where the App was installed at some point is `r installsNumber`.  
+
+Number of countries, where the app is currently installed is `r currentInstallsNumber`.
+
+Top 10 countries, where the app os used:
+
+```{r}
+countryData %>% 
+  group_by(Country, Var) %>% 
+  summarise_at("Val", sum) %>% 
+  ungroup() %>% 
+  filter(Var == "Installs", Val > 0) %>% 
+  arrange(desc(Val)) %>% 
+  top_n(10, Val) %>% 
+  mutate(Country = str_trunc(countrycode(Country, "iso2c", "country.name.en"), width = 30)) %>% 
+  ggplot(aes(x = fct_reorder(Country, Val), y = Val, fill = ""))  + 
+  scale_fill_manual(values = c("skyblue"), name = "")+
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label = Val), position = position_stack(vjust = 0.5)) +
+  coord_flip()+ 
+  theme(axis.text.y=element_text(hjust=0))+
+  xlab("") +
+  ylab("Number of installs by country out of top 10")
+  
+```
+
+
 # Mapping SAFA usage data against the world map
 
 The numbers below indicate nymber of installes of SAFA App on the various android smartphones.
 
-```{r echo=FALSE,error=FALSE,warning=FALSE,message=FALSE}
+```{r error=FALSE,warning=FALSE,message=FALSE}
 # Loading FAO world shape data file
 data(fao_world)
 
@@ -136,7 +187,6 @@ SafaMap <-
   tm_format_World()
 
 # Savingthe map in the file
-save_tmap(SafaMap, "output/Safa_World_map.png", width=1920, height=1080)
 save_tmap(SafaMap, "output/Safa_World_map.png", width=1920, height=1080)
 
 # Plotting the map
