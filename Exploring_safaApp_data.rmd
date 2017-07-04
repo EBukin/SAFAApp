@@ -1,0 +1,79 @@
+---
+title: "Exploring SafaApp data"
+author: "Eduard Bukin"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+Below, I attempt to explor data on the usage of the SAFA App along with the rates of app's instalation and deletion by countries. 
+
+# Setup and Loading data
+
+Previously, data on the app usage was downloaded in the bulk from the the google app portal and was farvested with the R code.
+
+```{r error=FALSE,warning=FALSE,message=FALSE}
+# Packages
+library(tidyverse)
+library(stringr)
+library(lubridate)
+
+# Loading app related data
+load("allHarvestedAppData.Rdata")
+```
+
+# Data exploration
+
+Cleaning data:
+
+```{r}
+vars <- 
+  appData %>% 
+  filter(fileName == "country") %>% 
+  map_lgl(.x = ., .f = function(x) {!all(is.na(x))})
+
+countryData <-
+  appData[vars] %>%
+  mutate(Date = ymd(Date)) %>% 
+  filter(fileName == "country") %>%
+  select(Date, Country, Daily.Device.Installs, Daily.Device.Uninstalls) %>% 
+  distinct() 
+```
+
+Looking at the total number of the apps instalation and deletions over the year:  
+`Daily.Device.Installs` means how many time the app was installed on one device  
+`Daily.Device.Uninstalls` means how many times the app was deleted from one device  
+Both these numbers may include repetative installation, when the app was reinstalled on the same device.
+
+```{r}
+countryData %>% 
+  group_by(Year = year(Date)) %>% 
+  summarise_at(c(3,4), sum)
+  
+```
+
+Make plot by countries.
+
+```{r}
+countryData %>% 
+  group_by(Country, Year = year(Date)) %>% 
+  summarise_at(c(3,4), sum) %>% 
+  group_by(Country) %>% 
+  mutate(SummOf= sum(Daily.Device.Installs)) %>% 
+  ungroup() %>% 
+  arrange(desc(SummOf), Country, Year) %>% 
+  knitr::kable()
+
+countryData
+  
+```
+
+
+
+
+
+
+
+
+
+
