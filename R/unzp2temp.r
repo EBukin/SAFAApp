@@ -1,6 +1,12 @@
 #'Unzit all files to Temp folder
 unzp2temp <- 
-  function(folderPath, fileName, tempFolder = file.path(folderPath, "TEMP")) {
+  function(folderPath = tempdir(), fileName, tempFolder = tempdir(), tempFolderName = NULL) {
+    # browser()
+    
+    if(!is.null(tempFolderName)) {
+      # Subfolder TempName
+      tempFolder <- file.path(tempFolder, tempFolderName)
+    }
     
     # Creating and/or cleaning a TEMP directory.
     dir.create(tempFolder, showWarnings = FALSE)

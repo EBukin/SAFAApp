@@ -37,8 +37,7 @@ files <-
 # Function for reading one zip file
 readAllCSV <-
   function(fileName, folderPath) {
-    theTempFolder <- file.path(folderPath, "temp")
-    # browser()
+    theTempFolder <- file.path(tempdir(), "SAFAAPPDATATEMP")
     
     unzp2temp(folderPath = folderPath,
               fileName = fileName,

@@ -2,31 +2,35 @@
 title: "Exploring SafaApp data"
 author: "Eduard Bukin"
 output:
-  html_document: default
+  pdf_document: default
   html_notebook: default
+  html_document: default
 ---
 
-Below, I attempt to explor data on the usage of the SAFA App along with the rates of app's instalation and deletion by countries. 
+Below, I attempt to explore data on the usage of the SAFA App along with the rates of app's installation and deletion by countries. 
 
 # Setup and Loading data
 
-Previously, data on the app usage was downloaded in the bulk from the the google app portal and was farvested with the R code.
+Previously, data on the app usage was downloaded in the bulk from the the Google app portal and was harvested with the R code.
 
-```{r error=FALSE,warning=FALSE,message=FALSE}
+```{r echo=FALSE,error=FALSE,warning=FALSE,message=FALSE}
 # Packages
 library(tidyverse)
 library(stringr)
 library(lubridate)
+library(forcats)
+devtools::install_github('UNFAOstatistics/gisfao')
+library(gisfao)
+library(tmap)
+library(countrycode)
 
 # Loading app related data
-load("allHarvestedAppData.Rdata")
+load("data/allHarvestedAppData.Rdata")
 ```
 
 # Data exploration
 
-Cleaning data:
-
-```{r}
+```{r echo=FALSE}
 vars <- 
   appData %>% 
   filter(fileName == "country") %>% 
@@ -37,35 +41,107 @@ countryData <-
   mutate(Date = ymd(Date)) %>% 
   filter(fileName == "country") %>%
   select(Date, Country, Daily.Device.Installs, Daily.Device.Uninstalls) %>% 
-  distinct() 
+  distinct() %>% 
+  gather(Var, Val, Daily.Device.Installs, Daily.Device.Uninstalls) %>% 
+  mutate(Year = as.factor(as.character(year(Date))),
+         Country = as.factor(Country),
+         Var = str_extract(Var, "[^.]*$"))  
 ```
 
-Looking at the total number of the apps instalation and deletions over the year:  
+Looking at the total number of the apps installation and deletions over the year:  
 `Daily.Device.Installs` means how many time the app was installed on one device  
 `Daily.Device.Uninstalls` means how many times the app was deleted from one device  
-Both these numbers may include repetative installation, when the app was reinstalled on the same device.
+Both these numbers may include repetitive installation, when the app was re installed on the same device.
 
-```{r}
+```{r echo=FALSE}
 countryData %>% 
-  group_by(Year = year(Date)) %>% 
-  summarise_at(c(3,4), sum)
+  group_by(Year, Var) %>% 
+  summarise_at("Val", sum) %>% 
+  ungroup() %>% 
+  mutate(Year = fct_reorder(Year, as.integer(Year), .desc = TRUE)) %>% 
+  ggplot(aes(x = Var, y = Val, fill = Year)) + 
+  geom_bar(stat = "identity") +
+  xlab("") +
+  ylab("Number of installs / uninstalls")
   
 ```
 
-Make plot by countries.
+# Number of installs and uninstalls by countries and years 
 
-```{r}
+Please note that for this plot we filtered only those countries, which had more than 10 installs of the SAFAApp. 
+
+```{r echo=FALSE}
 countryData %>% 
-  group_by(Country, Year = year(Date)) %>% 
-  summarise_at(c(3,4), sum) %>% 
+  group_by(Country, Year, Var) %>% 
+  summarise_at("Val", sum) %>% 
   group_by(Country) %>% 
-  mutate(SummOf= sum(Daily.Device.Installs)) %>% 
+  mutate(SummOf = sum(Val)) %>% 
   ungroup() %>% 
-  arrange(desc(SummOf), Country, Year) %>% 
-  knitr::kable()
-
-countryData
+  arrange(desc(SummOf), Country, desc(Year), Var) %>% 
+  filter(SummOf > 10) %>% 
+  mutate(Countries = fct_reorder(as.factor(str_c(Country, " ", Var)), SummOf, .desc = TRUE),
+         Year = fct_reorder(Year, as.integer(Year),.desc = TRUE )) %>% 
+  ggplot(aes(x = Countries, y = Val, fill = Year))  + 
+  geom_bar(stat = "identity", position = "stack") +
+  coord_flip()+ 
+  theme(axis.text.y=element_text(hjust=0))+
+  xlab("") +
+  ylab("Number of installs / uninstalls")
   
+```
+
+# Mapping SAFA usage data against the world map
+
+The numbers below indicate nymber of installes of SAFA App on the various android smartphones.
+
+```{r echo=FALSE,error=FALSE,warning=FALSE,message=FALSE}
+# Loading FAO world shape data file
+data(fao_world)
+
+# Grid lines
+data(graticule)
+
+# Actual data with countrycodes
+ActualData <- 
+  countryData %>% 
+  group_by(Country, Var) %>% 
+  dplyr::summarise(Val = sum(Val)) %>% 
+  ungroup() %>% 
+  spread(Var, Val) %>% 
+  dplyr::filter(Country != "", !is.na(Country)) %>% 
+  dplyr::mutate(FAOST_CODE = countrycode(Country, "iso2c", "fao")) %>% 
+  # dplyr::filter(is.na(FAOST_CODE)) %>% 
+  dplyr::mutate(FAOST_CODE = ifelse(as.character(Country) == "PS", 299, FAOST_CODE),
+         FAOST_CODE = ifelse(as.character(Country) == "PR", 177, FAOST_CODE),
+         FAOST_CODE = ifelse(as.character(Country) == "RE", 182, FAOST_CODE)) %>% 
+  right_join(tibble(FAOST_CODE = fao_world$FAO_CODE), by = "FAOST_CODE") %>% 
+  select(-Country)
+
+# Adding data variables
+fao_world$Installs <- ActualData$Installs
+fao_world$Uninstalls <- ActualData$Uninstalls
+
+# Plotting the map
+SafaMap <- 
+  tm_shape(fao_world, projection="robin") +
+  # tm_borders() +
+  tm_polygons("Installs", palette="Blues", 
+              style = "kmeans", 
+              contrast = 1, 
+              id="name", 
+              title="SAFA App usage",
+              legend.z = 1000) +
+  tm_grid(projection="longlat", labels.size = 0, alpha = .8) + 
+  tm_style_white() + 
+  tm_format_World()
+
+# Savingthe map in the file
+save_tmap(SafaMap, "output/Safa_World_map.png", width=1920, height=1080)
+save_tmap(SafaMap, "output/Safa_World_map.png", width=1920, height=1080)
+
+# Plotting the map
+SafaMap
+
 ```
 
 
